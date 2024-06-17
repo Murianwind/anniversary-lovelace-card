@@ -112,7 +112,7 @@ type: 'custom:anniversary-card'
 |numberofdays| (옵션) 화면에 표시할 센서의 기한. 기본값은 31일<br>설정한 일수 이하로 남은 기념일만 표시됨 |
 |showdate| (옵션) 음력기념일의 날짜 표시 설정<br><ul><li>solar = 양력으로 표시 (기본값)</li><li>lunar = 음력으로 표시</li><li>both = 양력, 음력 둘다 표시</li></ul>|
 |showkage| (옵션) 한국 나이 표시 여부. 기본값은 false<br>true로 설정하면 윗첨자 스타일로 한국 나이가 추가 표시됨. |
-|noshoplist| (옵션) 장보기목록 사용 안함 여부. 기본값은 false<br>true로 설정하면 장보기목록 리스트는 보이지 않음. |
+|noshoplist| (옵션) 장보기목록 사용 안함 여부. 기본값은 false<br>true로 설정하면 장보기목록 리스트는 보이지 않음.<br>⚠️통합구성요소 버전 사용시 true로 설정해야 함|
 
 <br>
 
