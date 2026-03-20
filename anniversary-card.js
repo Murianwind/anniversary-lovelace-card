@@ -3,12 +3,14 @@ class AnniversaryCard extends HTMLElement {
 
         const entities = this.config.entities;
         const ttsensor = hass.states['sensor.anniversary_tts'];
-
         let draw = false;
 
-        if ( entities.length > 0 && hass.states[entities[0]].state !== this._entityState ) {
-            draw = true;
-        } else if ( ttsensor.attributes &&
+        // 첫 번째 엔티티의 상태가 변경되었는지 확인
+        if ( entities.length > 0 && hass.states[entities[0]] && hass.states[entities[0]].state !== this._entityState ) {
+        draw = true;
+        } 
+        // TTS 센서가 존재할 때만 추가 체크
+        else if ( ttsensor && ttsensor.attributes &&
             (new Date() - new Date(ttsensor.last_updated)) < 5000 ) {
             draw = true;
         }
