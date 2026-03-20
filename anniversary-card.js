@@ -2,15 +2,20 @@ class AnniversaryCard extends HTMLElement {
     set hass(hass) {
 
         const entities = this.config.entities;
-        const ttsensor = hass.states['sensor.anniversary_tts'];
+        // sensor.anniversary_tts가 없을 경우를 대비해 빈 객체로 기본값 설정
+        const ttsensor = hass.states['sensor.anniversary_tts'] || { attributes: {}, last_updated: 0 };
+
         let draw = false;
 
-        // 첫 번째 엔티티의 상태가 변경되었는지 확인
-        if ( entities.length > 0 && hass.states[entities[0]] && hass.states[entities[0]].state !== this._entityState ) {
-        draw = true;
+        // 설정된 엔티티가 있고, 첫 번째 엔티티의 상태가 변경되었을 때만 그리기 실행
+        if ( entities.length > 0 && hass.states[entities[0]] ) {
+            if (hass.states[entities[0]].state !== this._entityState) {
+                draw = true;
+            }
         } 
-        // TTS 센서가 존재할 때만 추가 체크
-        else if ( ttsensor && ttsensor.attributes &&
+        
+        // TTS 센서가 존재하고 최근 5초 이내에 업데이트된 경우 그리기 실행
+        if ( ttsensor.last_updated !== 0 && ttsensor.attributes &&
             (new Date() - new Date(ttsensor.last_updated)) < 5000 ) {
             draw = true;
         }
@@ -51,7 +56,7 @@ class AnniversaryCard extends HTMLElement {
 
             const annivList = [];
             
-            const numberOfDays = this.config.numberofdays ? this.config.numberofdays : 31; //Number of days from today upcoming birthdays will be displayed - default 31
+            const numberOfDays = this.config.numberofdays ? this.config.numberofdays : 31;
             const showDate = this.config.showdate ? this.config.showdate : "solar";
             const noshoplist = this.config.noshoplist ? this.config.noshoplist : false;
             const showKAge = this.config.showkage ? this.config.showkage : false;
@@ -59,6 +64,8 @@ class AnniversaryCard extends HTMLElement {
             entities.forEach(el => {
                 try {
                     const anniv = hass.states[el];
+                    if (!anniv) return; // 엔티티가 존재하지 않으면 건너뜀
+
                     const up_date = anniv.attributes.upcoming_date;
                     let this_date = new Date(up_date);
 
@@ -83,7 +90,8 @@ class AnniversaryCard extends HTMLElement {
                 } catch(e) {}
             });
 
-            if ( !noshoplist ) {
+            // TTS 센서가 있을 때만 목록에 추가
+            if ( !noshoplist && ttsensor.last_updated !== 0 ) {
                 for( var key in ttsensor.attributes ) {
                     if ( key != "friendly_name" && key != "icon" ){
                         try {
@@ -161,9 +169,6 @@ class AnniversaryCard extends HTMLElement {
                     padding: 5px;
                     margin-bottom: 5px;
                 }
-                .aniv-wrapper:last-child {
-                    OFFborder-bottom: none;
-                }
                 .aniv-divider {
                     height: 1px;
                     border-bottom: 1px solid rgba(127, 127, 127, 0.7);
@@ -171,7 +176,6 @@ class AnniversaryCard extends HTMLElement {
                 }
                 .aniv-today {
                     font-weight: bold;
-                    OFFborder-bottom: 1px solid;
                 }
                 .aniv-wrapper .ha-icon {
                     display: inline-block;
@@ -182,8 +186,6 @@ class AnniversaryCard extends HTMLElement {
                     color: var(--paper-item-icon-color);
                 }
                 .aniv-wrapper .ha-icon.on {
-                    margin-left: 5px;
-                    margin-right: 17px;
                     color: var(--paper-item-icon-active-color);
                 }
                 .aniv-name {
@@ -218,14 +220,19 @@ class AnniversaryCard extends HTMLElement {
             
             if ( this.content ) {
                 var pNode = this.content.parentNode.parentNode;
-                pNode.removeChild( pNode.childNodes[0] );
+                if (pNode && pNode.childNodes.length > 0) {
+                    pNode.removeChild( pNode.childNodes[0] );
+                }
             }
 
             const card = document.createElement('ha-card');
             const tittel = this.config.title;
             this.content = document.createElement('div');
-            if ( '' != tittel && 'none' != tittel ) {
-                card.header = tittel ? tittel : MSG.title; // Card title from ui-lovelace.yaml - Defaults to Anniversary
+            if ( tittel && tittel !== 'none' ) {
+                card.header = tittel;
+                this.content.style.padding = '0 16px 16px';
+            } else if (tittel === undefined) {
+                card.header = MSG.title;
                 this.content.style.padding = '0 16px 16px';
             } else {
                 this.content.style.padding = '16px';
@@ -246,13 +253,14 @@ class AnniversaryCard extends HTMLElement {
                             composed: true
                         });
                         event.detail = { entityId: col.getAttribute("entity-id") };
-                        card.shadowRoot.dispatchEvent(event);
-                        return event;
+                        card.shadowRoot ? card.shadowRoot.dispatchEvent(event) : col.dispatchEvent(event);
                     });
                 }
             });
 
-            this._entityState = hass.states[entities[0]].state;
+            if (entities.length > 0 && hass.states[entities[0]]) {
+                this._entityState = hass.states[entities[0]].state;
+            }
 
         }	
         
@@ -262,7 +270,6 @@ class AnniversaryCard extends HTMLElement {
         this.config = config;
     }
     
-    // The height of your card. Home Assistant uses this to automatically distribute all cards over the available columns.
     getCardSize() {
         return 3;
     }
