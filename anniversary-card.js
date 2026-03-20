@@ -170,7 +170,7 @@ customElements.define('anniversary-card', AnniversaryCard);
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: "anniversary-card",
-  name: "기념일 카드 (TTS 무관)",
-  description: "TTS 센서 없이 동작하는 기념일 계산기 전용 카드입니다.",
+  name: "기념일 카드",
+  description: "",
   preview: true
 });
