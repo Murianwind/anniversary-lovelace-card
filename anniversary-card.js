@@ -1,279 +1,176 @@
 class AnniversaryCard extends HTMLElement {
-    set hass(hass) {
+  // 비주얼 에디터 설정 (카드 추가 시 기본값)
+  static getStubConfig() {
+    return {
+      type: 'custom:anniversary-card',
+      lang: 'ko',
+      showdate: 'both',
+      numberofdays: 365,
+      entities: []
+    };
+  }
 
-        const entities = this.config.entities;
-        // sensor.anniversary_tts가 없을 경우를 대비해 빈 객체로 기본값 설정
-        const ttsensor = hass.states['sensor.anniversary_tts'] || { attributes: {}, last_updated: 0 };
+  set hass(hass) {
+    this._hass = hass;
+    if (!this.config) return;
 
-        let draw = false;
-
-        // 설정된 엔티티가 있고, 첫 번째 엔티티의 상태가 변경되었을 때만 그리기 실행
-        if ( entities.length > 0 && hass.states[entities[0]] ) {
-            if (hass.states[entities[0]].state !== this._entityState) {
-                draw = true;
-            }
-        } 
-        
-        // TTS 센서가 존재하고 최근 5초 이내에 업데이트된 경우 그리기 실행
-        if ( ttsensor.last_updated !== 0 && ttsensor.attributes &&
-            (new Date() - new Date(ttsensor.last_updated)) < 5000 ) {
-            draw = true;
+    // TTS 관련 로직을 모두 삭제하고, 엔티티 상태 변화만 감지하도록 단순화
+    const entities = this.config.entities || [];
+    const firstEntity = entities.length > 0 ? hass.states[entities[0]] : null;
+    
+    if (firstEntity) {
+        if (this._entityState !== firstEntity.state) {
+            this._entityState = firstEntity.state;
+            this.render();
         }
+    } else {
+        this.render();
+    }
+  }
 
-        if ( draw ) {
+  setConfig(config) {
+    if (!config.entities || !Array.isArray(config.entities)) {
+      throw new Error('entities 목록을 설정해야 합니다.');
+    }
+    this.config = config;
+  }
 
-            const symbolMemorial = "&#8224;";
-            const symbolMarried = "&#9829;";
-            
-            const MESSAGE = {
-                en: {
-                    title: 'Anniversary',
-                    today: 'Today',
-                    tomorrow: 'Tomorrow',
-                    none: 'No anniversaries in the next',
-                    days: 'days',
-                    years: 'years',
-                    in: 'in',
-                    space: ' '
-                },
-                ko: {
-                    title: '기념일',
-                    today: '오늘',
-                    tomorrow: '내일',
-                    none: '예정된 기념일이 없습니다.',
-                    days: '일 후',
-                    years: '번째',
-                    in: '',
-                    space: ''
-                }
-            }
-            
-            const lang = this.config.lang;
-            let MSG = MESSAGE.en;
-            if (lang && lang == "ko"){
-                MSG = MESSAGE.ko;
-            }
+  render() {
+    if (!this._hass || !this.config) return;
 
-            const annivList = [];
-            
-            const numberOfDays = this.config.numberofdays ? this.config.numberofdays : 31;
-            const showDate = this.config.showdate ? this.config.showdate : "solar";
-            const noshoplist = this.config.noshoplist ? this.config.noshoplist : false;
-            const showKAge = this.config.showkage ? this.config.showkage : false;
+    const lang = this.config.lang || 'ko';
+    const MSG = {
+      ko: { title: '기념일', today: '오늘', tomorrow: '내일', none: '예정된 기념일이 없습니다.', days: '일 후', years: '번째', space: '' },
+      en: { title: 'Anniversary', today: 'Today', tomorrow: 'Tomorrow', none: 'No anniversaries in the next', days: 'days', years: 'years', space: ' ' }
+    }[lang];
 
-            entities.forEach(el => {
-                try {
-                    const anniv = hass.states[el];
-                    if (!anniv) return; // 엔티티가 존재하지 않으면 건너뜀
+    const annivList = [];
+    const numberOfDays = this.config.numberofdays || 31;
+    const showDate = this.config.showdate || "solar";
+    const showKAge = this.config.showkage || false;
 
-                    const up_date = anniv.attributes.upcoming_date;
-                    let this_date = new Date(up_date);
+    // 순수하게 설정된 엔티티 데이터만 수집
+    this.config.entities.forEach(entityId => {
+      const stateObj = this._hass.states[entityId];
+      if (!stateObj || !stateObj.attributes.upcoming_date) return;
 
-                    const lunardate = new Date(anniv.attributes.lunar_date);
-                    const lunar = "음" + (lunardate.getMonth()+1) + "." + lunardate.getDate()
+      const attrs = stateObj.attributes;
+      const dateObj = new Date(attrs.upcoming_date);
+      const lunarDate = attrs.lunar_date ? new Date(attrs.lunar_date) : null;
+      const lunarStr = lunarDate ? `음${lunarDate.getMonth() + 1}.${lunarDate.getDate()}` : "";
 
-                    annivList.push({
-                        "name": anniv.attributes.friendly_name,
-                        "count": anniv.state,
-                        "age": anniv.attributes.upcoming_count,
-                        "kage": anniv.attributes.korean_age,
-                        "date": up_date,
-                        "month": this_date.getMonth()+1,
-                        "day": this_date.getDate(),
-                        "type": anniv.attributes.type,
-                        "icon": anniv.attributes.icon,
-                        "id": anniv.entity_id,
-                        "is_lunar": anniv.attributes.is_lunar == 'True' ? true : false,
-                        "is_mmdd": anniv.attributes.is_mmdd == 'True' ? true : false,
-                        "lunar_date": lunar
-                    });
-                } catch(e) {}
-            });
+      annivList.push({
+        name: attrs.friendly_name || entityId,
+        count: parseInt(stateObj.state) || 0,
+        age: attrs.upcoming_count || 0,
+        kage: attrs.korean_age || 0,
+        month: dateObj.getMonth() + 1,
+        day: dateObj.getDate(),
+        type: attrs.type || 'event',
+        icon: attrs.icon || 'mdi:calendar',
+        id: entityId,
+        is_lunar: attrs.is_lunar === 'True',
+        is_mmdd: attrs.is_mmdd === 'True',
+        lunar_date: lunarStr
+      });
+    });
 
-            // TTS 센서가 있을 때만 목록에 추가
-            if ( !noshoplist && ttsensor.last_updated !== 0 ) {
-                for( var key in ttsensor.attributes ) {
-                    if ( key != "friendly_name" && key != "icon" ){
-                        try {
-                            const value = ttsensor.attributes[key];
-                            const solar = value[1].split('.');
-                            const is_lunar = value[2] !== "solar";
-                            const lunar = is_lunar ? "음"+value[2] : "";
-                            const name = value[3] ? value[3] : key;
+    // 남은 날짜 순 정렬
+    annivList.sort((a, b) => a.count - b.count);
 
-                            annivList.push({
-                                "name": name,
-                                "count": value[0],
-                                "age": 0,
-                                "kage": 0,
-                                "date": value[1],
-                                "month": solar[0],
-                                "day": solar[1],
-                                "type": "todo",
-                                "icon": "mdi:calendar-check",
-                                "id": "",
-                                "is_lunar": is_lunar,
-                                "is_mmdd": true,
-                                "lunar_date": lunar
-                            });
-                        } catch(e) {}
-                    }
-                }
-            }
+    let htmlToday = "";
+    let htmlNext = "";
 
-            annivList.sort(function(a,b){
-                return Number(a.count) < Number(b.count) ? -1 : Number(a.count) > Number(b.count) ? 1 : 0;
-            });
-            
-            var annivToday = "";
-            var annivNext = "";
-            
-            annivList.forEach(obj => {
-                
-                var infoLeft = obj.name;
-                if (!obj.is_mmdd && obj.type != 'todo' && obj.type != 'event') {
-                    infoLeft = infoLeft + ` (${obj.age}${MSG.space}${MSG.years})`;
-                }
-                if (obj.type == 'memorial') {
-                    infoLeft = infoLeft + ` <sup>${symbolMemorial}</sup>`;
-                } else if (obj.type == 'wedding') {
-                    infoLeft = infoLeft + ` <sup>${symbolMarried}</sup>`;
-                } else if (showKAge && obj.type == 'birth') {
-                    infoLeft = infoLeft + ` <sup>${obj.kage}</sup>`;
-                }
+    annivList.forEach(obj => {
+      let nameStr = obj.name;
+      // 이벤트나 할일이 아닌 경우 몇 번째인지 표시
+      if (!obj.is_mmdd && !['todo', 'event'].includes(obj.type)) {
+        nameStr += ` (${obj.age}${MSG.years})`;
+      }
+      
+      // 심볼 처리
+      if (obj.type === 'memorial') nameStr += ` <sup>†</sup>`;
+      else if (obj.type === 'wedding') nameStr += ` <sup>♥</sup>`;
+      else if (showKAge && obj.type === 'birth') nameStr += ` <sup>${obj.kage}</sup>`;
 
-                if ( obj.count == 0 ) {
-                    annivToday = annivToday + `<div class='aniv-wrapper aniv-today' entity-id='${obj.id}'><ha-icon class='ha-icon entity on' icon='mdi:crown'></ha-icon><div class='aniv-name'>${infoLeft}</div><div class='aniv-when'>${MSG.today}</div></div>`;
-                } else if ( obj.count <= numberOfDays ) {
-                    var infoRight = obj.count == 1 ? MSG.tomorrow : MSG.in + " " + obj.count + " " + MSG.days;
-                    if ( obj.is_lunar ){
-                        if ( showDate == "both" ) {
-                            infoRight = infoRight + ` (${obj.month}.${obj.day}/${obj.lunar_date})`;
-                        } else if ( showDate == "lunar" ) {
-                            infoRight = infoRight + ` (${obj.lunar_date})`;
-                        } else {
-                            infoRight = infoRight + ` (${obj.month}.${obj.day})`;
-                        }
-                    } else {
-                        infoRight = infoRight + ` (${obj.month}.${obj.day})`;
-                    }
-
-                    annivNext = annivNext + `<div class='aniv-wrapper' entity-id='${obj.id}'><ha-icon class='ha-icon entity' icon='${obj.icon}'></ha-icon><div class='aniv-name'>${infoLeft}</div><div class='aniv-when'>${infoRight}</div></div>`;
-                }
-
-            });
-            
-            var cardHtmlStyle = `
-            <style>
-                .aniv-wrapper {
-                    padding: 5px;
-                    margin-bottom: 5px;
-                }
-                .aniv-divider {
-                    height: 1px;
-                    border-bottom: 1px solid rgba(127, 127, 127, 0.7);
-                    margin-bottom: 5px;
-                }
-                .aniv-today {
-                    font-weight: bold;
-                }
-                .aniv-wrapper .ha-icon {
-                    display: inline-block;
-                    height: 20px;
-                    width: 20px;
-                    margin-left: 5px;
-                    margin-right: 17px;
-                    color: var(--paper-item-icon-color);
-                }
-                .aniv-wrapper .ha-icon.on {
-                    color: var(--paper-item-icon-active-color);
-                }
-                .aniv-name {
-                    display: inline-block;
-                    padding-left: 10px;
-                    padding-top: 2px;
-                }
-                .aniv-none {
-                    color: var(--paper-item-icon-color);
-                }
-                .aniv-when {
-                    display: inline-block;
-                    float: right;
-                    font-size: smaller;
-                    padding-top: 3px;
-                }
-            </style>
-            `;
-            
-            if (!annivToday && !annivNext) {
-                var cardHtmlContent = `<div class='aniv-none'>${MSG.none} ${numberOfDays} ${MSG.days}</div>`;
-                if (lang && lang == "ko"){
-                    cardHtmlContent = `<div class='aniv-none'>다음 ${numberOfDays}일 동안 예정된 기념일이 없습니다.</div>`;
-                }
-            } else if (!annivToday) {
-                var cardHtmlContent = annivNext;
-            } else if (!annivNext) {
-                var cardHtmlContent = annivToday;
-            } else {
-                var cardHtmlContent = annivToday + "<div class='aniv-divider'></div>" + annivNext;
-            }
-            
-            if ( this.content ) {
-                var pNode = this.content.parentNode.parentNode;
-                if (pNode && pNode.childNodes.length > 0) {
-                    pNode.removeChild( pNode.childNodes[0] );
-                }
-            }
-
-            const card = document.createElement('ha-card');
-            const tittel = this.config.title;
-            this.content = document.createElement('div');
-            if ( tittel && tittel !== 'none' ) {
-                card.header = tittel;
-                this.content.style.padding = '0 16px 16px';
-            } else if (tittel === undefined) {
-                card.header = MSG.title;
-                this.content.style.padding = '0 16px 16px';
-            } else {
-                this.content.style.padding = '16px';
-            }
-            
-            card.appendChild(this.content);
-            this.appendChild(card);
-
-            this.content.innerHTML = cardHtmlStyle + cardHtmlContent;
-                
-            const cols = this.content.querySelectorAll('.aniv-wrapper');
-            cols.forEach(col => {
-                if ( col.getAttribute("entity-id") != "" ){
-                    col.addEventListener("click", function(){
-                        const event = new Event('hass-more-info', {
-                            bubbles: true,
-                            cancelable: false,
-                            composed: true
-                        });
-                        event.detail = { entityId: col.getAttribute("entity-id") };
-                        card.shadowRoot ? card.shadowRoot.dispatchEvent(event) : col.dispatchEvent(event);
-                    });
-                }
-            });
-
-            if (entities.length > 0 && hass.states[entities[0]]) {
-                this._entityState = hass.states[entities[0]].state;
-            }
-
-        }	
+      if (obj.count === 0) {
+        htmlToday += `
+          <div class="aniv-wrapper aniv-today" data-id="${obj.id}">
+            <ha-icon icon="mdi:crown" class="on"></ha-icon>
+            <div class="aniv-name">${nameStr}</div>
+            <div class="aniv-when">${MSG.today}</div>
+          </div>`;
+      } else if (obj.count <= numberOfDays) {
+        let whenStr = obj.count === 1 ? MSG.tomorrow : `${obj.count}${MSG.days}`;
+        let dateStr = `${obj.month}.${obj.day}`;
         
-    }
-    
-    setConfig(config) {
-        this.config = config;
-    }
-    
-    getCardSize() {
-        return 3;
+        if (obj.is_lunar) {
+          if (showDate === "both") dateStr += `/${obj.lunar_date}`;
+          else if (showDate === "lunar") dateStr = obj.lunar_date;
+        }
+        
+        htmlNext += `
+          <div class="aniv-wrapper" data-id="${obj.id}">
+            <ha-icon icon="${obj.icon}"></ha-icon>
+            <div class="aniv-name">${nameStr}</div>
+            <div class="aniv-when">${whenStr} (${dateStr})</div>
+          </div>`;
+      }
+    });
+
+    const style = `
+      <style>
+        ha-card { padding: 16px; }
+        .card-header { padding: 0 0 10px 0; font-size: 1.5em; font-weight: 400; }
+        .aniv-wrapper { display: flex; align-items: center; padding: 8px 0; cursor: pointer; }
+        .aniv-wrapper ha-icon { margin-right: 16px; color: var(--paper-item-icon-color); }
+        .aniv-wrapper ha-icon.on { color: var(--paper-item-icon-active-color); }
+        .aniv-name { flex: 1; font-size: 1em; }
+        .aniv-when { font-size: 0.9em; color: var(--secondary-text-color); }
+        .aniv-divider { height: 1px; background: var(--divider-color); margin: 8px 0; }
+        .aniv-none { color: var(--secondary-text-color); padding: 8px 0; }
+      </style>
+    `;
+
+    let content = "";
+    if (!htmlToday && !htmlNext) {
+      content = `<div class="aniv-none">${MSG.none}</div>`;
+    } else {
+      content = htmlToday + (htmlToday && htmlNext ? "<div class='aniv-divider'></div>" : "") + htmlNext;
     }
 
+    this.innerHTML = `
+      <ha-card>
+        <div class="card-header">${this.config.title || MSG.title}</div>
+        ${style}
+        <div id="container">${content}</div>
+      </ha-card>
+    `;
+
+    // 클릭 시 상세 정보 팝업
+    this.querySelectorAll('.aniv-wrapper').forEach(el => {
+      el.addEventListener('click', () => {
+        const ev = new CustomEvent('hass-more-info', {
+          detail: { entityId: el.dataset.id },
+          bubbles: true, composed: true
+        });
+        this.dispatchEvent(ev);
+      });
+    });
+  }
+
+  getCardSize() {
+    return this.config.entities ? this.config.entities.length : 1;
+  }
 }
 
 customElements.define('anniversary-card', AnniversaryCard);
+
+// 비주얼 에디터 리스트에 등록
+window.customCards = window.customCards || [];
+window.customCards.push({
+  type: "anniversary-card",
+  name: "기념일 카드 (TTS 무관)",
+  description: "TTS 센서 없이 동작하는 기념일 계산기 전용 카드입니다.",
+  preview: true
+});
